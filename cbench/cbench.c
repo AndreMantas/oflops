@@ -32,14 +32,14 @@ int epollfd;
 
 struct myargs my_options[] = {
     {"controller",  'c', "hostname of controller to connect to", MYARGS_STRING, {.string = "localhost"}},
-    {"debug",       'd', "enable debugging", MYARGS_FLAG, {.flag = 0}},
+    {"debug",       'd', "enable debugging", MYARGS_FLAG, {.flag = 1}},
     {"help",        'h', "print this message", MYARGS_NONE, {.none = 0}},
     {"loops",       'l', "loops per test",   MYARGS_INTEGER, {.integer = 16}},
     {"mac-addresses", 'M', "unique source MAC addresses per switch", MYARGS_INTEGER, {.integer = 100000}},
     {"ms-per-test", 'm', "test length in ms", MYARGS_INTEGER, {.integer = 1000}},
     {"port",        'p', "controller port",  MYARGS_INTEGER, {.integer = OFP_TCP_PORT}},
     {"ranged-test", 'r', "test range of 1..$n switches", MYARGS_FLAG, {.flag = 0}},
-    {"switches",    's', "fake $n switches", MYARGS_INTEGER, {.integer = 16}},
+    {"switches",    's', "fake $n switches", MYARGS_INTEGER, {.integer = 1}}, // TODO: default is 16
     {"throughput",  't', "test throughput instead of latency", MYARGS_NONE, {.none = 0}},
     {"warmup",  'w', "loops to be disregarded on test start (warmup)", MYARGS_INTEGER, {.integer = 1}},
     {"cooldown",  'C', "loops to be disregarded at test end (cooldown)", MYARGS_INTEGER, {.integer = 0}},
