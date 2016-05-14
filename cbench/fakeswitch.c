@@ -89,6 +89,9 @@ void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize,
     debug_msg(fs, " sent hello");
 }
 
+void print_packet_in(struct ofp_packet_in pi);
+void print_match(struct ofp_match m);
+
 void fakeswitch_learn_dstmac(struct fakeswitch *fs) {
     // thanks wireshark
     char gratuitous_arp_reply[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00,
@@ -104,28 +107,32 @@ void fakeswitch_learn_dstmac(struct fakeswitch *fs) {
     char ip_address_to_learn[] = { 192, 168, 1, 40 };
 
     char buf[512];
+
+    uint8_t pad[2];
+    memset(pad, 0, sizeof(pad));
+
     struct ofp_packet_in *pkt_in;
 
-    // size of type + length + what goes into oxm_fields (64)
-    // -4 because pad[4] already allocated
-    size_t pkt_in_match_size = sizeof(struct ofp_match) + 60;
-    struct ofp_match *pkt_in_match = malloc(pkt_in_match_size);
+    /** create OF >= 1.2 match **/
+    uint32_t in_port = htons(2);
+
+    // size of OXM_OF_IN_PORT + size of in_port
+    size_t fields_len = 32 + sizeof(in_port);
+    struct ofp_match *pkt_in_match = malloc(
+            sizeof(struct ofp_match) + fields_len);
     struct ether_header * eth;
     void * arp_reply;
 
     memset(buf, 0, sizeof(buf));
 
-    /** create OF >= 1.2 match **/
-    uint32_t in_port = htons(2);
-    uint32_t *match_fields = malloc(32 + sizeof(in_port));
-    match_fields[0] = OXM_OF_IN_PORT;
-    match_fields[1] = in_port;
     pkt_in_match->type = OFPMT_OXM;
-    pkt_in_match->oxm_fields[0] = OFPXMT_OFB_IN_PORT;
-    pkt_in_match->oxm_fields[1] = in_port;
-
-    //pkt_in_match.pad = {0,0,0,0};
-    pkt_in_match->length = 64;
+    // size of OXM_OF_IN_PORT + size of in_port
+    pkt_in_match->length = fields_len;
+    uint8_t oxm_fields[fields_len];
+    oxm_fields[0] = OXM_OF_IN_PORT;
+    oxm_fields[1] = in_port;
+    memcpy(pkt_in_match->oxm_fields, oxm_fields, fields_len);
+    print_match(*pkt_in_match);
 
     pkt_in = (struct ofp_packet_in *) buf;
 
@@ -133,30 +140,46 @@ void fakeswitch_learn_dstmac(struct fakeswitch *fs) {
     pkt_in->header.type = OFPT_PACKET_IN;
 
     // add variable match size
-    int len = sizeof(struct ofp_packet_in) + pkt_in_match_size
-            + sizeof(gratuitous_arp_reply);
+    int len = sizeof(struct ofp_packet_in) + pkt_in_match->length
+            + sizeof(gratuitous_arp_reply) + sizeof(pad);
 
     pkt_in->header.length = htons(len);
     pkt_in->header.xid = htonl(fs->xid++);
 
     pkt_in->buffer_id = -1;
     pkt_in->total_len = htons(sizeof(gratuitous_arp_reply));
+
+    //pkt_in->reason = OFPR_NO_MATCH;
+    pkt_in->reason = OFPR_TABLE_MISS;
+
     // OF 1.0:
     // pkt_in->in_port = htons(2);
 
-    //pkt_in->match = *pkt_in_match;
-    memcpy(&pkt_in->match, pkt_in_match, pkt_in_match_size);
-    //pkt_in->reason = OFPR_NO_MATCH;
+    pkt_in->table_id = 0;
 
-    pkt_in->reason = OFPR_TABLE_MISS;
-    int data_start = sizeof(struct ofp_packet_in) + pkt_in_match_size;
-    memcpy(&buf[data_start], gratuitous_arp_reply,
-            sizeof(gratuitous_arp_reply));
+    pkt_in->cookie = 0;
+
+    // copy match to packet in
+    memcpy(&pkt_in->match, pkt_in_match, sizeof(struct ofp_match) + fields_len);
+    debug_msg(fs, "Match after memcpy:");
+    print_match(pkt_in->match);
+
+    // need to add pad[2] here after match
+
+    int index = sizeof(struct ofp_packet_in) + pkt_in->match.length;
+    memcpy(&buf[index], pad, sizeof(pad));
+
+    index = index + sizeof(pad);
+
+    debug_msg(fs, "Starting to copy data to init position %d", index);
+    memcpy(&buf[index], gratuitous_arp_reply, sizeof(gratuitous_arp_reply));
+    debug_msg(fs, "PacketIn after memcpy:");
+    print_packet_in(*pkt_in);
 
     mac_address_to_learn[5] = fs->id;
     ip_address_to_learn[2] = fs->id;
 
-    eth = (struct ether_header *) &(buf[data_start]);
+    eth = (struct ether_header *) &(buf[index]);
     memcpy(eth->ether_shost, mac_address_to_learn, 6);
 
     arp_reply = ((void *) eth) + sizeof(struct ether_header);
@@ -164,11 +187,40 @@ void fakeswitch_learn_dstmac(struct fakeswitch *fs) {
     memcpy(arp_reply + 14, ip_address_to_learn, 4);
     memcpy(arp_reply + 18, mac_address_to_learn, 6);
     memcpy(arp_reply + 24, ip_address_to_learn, 4);
+    debug_msg(fs, "PacketIn after arp_reply:");
+    print_packet_in(*pkt_in);
 
+    /*
+     printf("Whole buffern:\n");
+     int i;
+     for (i = 0; i < len; i++) {
+     printf("%02x ", buf[i]);
+     }
+     printf("\n");
+     */
     msgbuf_push(fs->outbuf, (char *) pkt_in, len);
     debug_msg(fs,
             " sent gratuitous ARP reply to learn about mac address: version %d length %d type %d eth: %x arp: %x ",
             pkt_in->header.version, len, buf[1], eth, arp_reply);
+}
+
+void print_packet_in(struct ofp_packet_in pi) {
+    printf("Header: version=%d , type=%d , xid=%u , length=%d \n",
+            pi.header.version, pi.header.type, ntohl(pi.header.xid),
+            ntohs(pi.header.length));
+    printf("reason=%d , cookie=%lu , table_id=%d , buffer_id=%d,"
+            "total_len=%d \n", pi.reason, pi.cookie, pi.table_id, pi.buffer_id,
+            ntohs(pi.total_len));
+    print_match(pi.match);
+}
+
+void print_match(struct ofp_match m) {
+    printf("match=[type=%d , length=%d , fields=", m.type, m.length);
+    int i;
+    for (i = 0; i < m.length; i++) {
+        printf("%02x ", m.oxm_fields[i]);
+    }
+    printf("]\n");
 }
 
 /***********************************************************************/
