@@ -27,12 +27,18 @@
 
 static int debug_msg(struct fakeswitch * fs, char * msg, ...);
 
-static void handle_bundle_add_message(uint32_t bundle_id,
+static void handle_bundle_add_message(struct fakeswitch *fs, uint32_t bundle_id,
         struct ofp_header *msg_to_add);
 static void handle_packet_out(struct fakeswitch *fs, struct ofp_packet_out *po);
 static void handle_flow_mod(struct fakeswitch *fs, struct ofp_flow_mod *po);
 static void handle_multipart_request(struct fakeswitch *fs,
         struct ofp_multipart_request *stats_req, char * buf, int buflen);
+static void handle_bundle_open_request(struct fakeswitch *fs,
+        struct ofp_bundle_ctrl_msg ctrl_msg);
+static void handle_bundle_close_request(struct fakeswitch *fs,
+        struct ofp_bundle_ctrl_msg ctrl_msg);
+static void handle_bundle_commit_request(struct fakeswitch *fs,
+        struct ofp_bundle_ctrl_msg ctrl_msg);
 
 static int make_features_reply(struct fakeswitch *fs, int switch_id, int xid,
         char * buf, int buflen);
@@ -101,6 +107,7 @@ void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize,
     fs->xid = 1;
     fs->learn_dstmac = learn_dstmac;
     fs->current_buffer_id = 1;
+    memset(fs->bundles, 0, sizeof(fs->bundles));
 
     // we only send one bitmap containing version 1.4
 
@@ -410,15 +417,59 @@ static void handle_flow_mod(struct fakeswitch *fs, struct ofp_flow_mod *fm) {
     }
 }
 
-static void handle_bundle_add_message(uint32_t bundle_id,
-        struct ofp_header *msg_to_add) {
-
+struct fakebundle *get_fakebundle(struct fakeswitch *fs, uint32_t bundle_id) {
+    return &(fs->bundles[(ntohl(bundle_id)) % MAX_BUNDLES]);
 }
+
+static void handle_bundle_open_request(struct fakeswitch *fs,
+        struct ofp_bundle_ctrl_msg ctrl_msg) {
+    struct fakebundle *bundle = get_fakebundle(fs, ctrl_msg.bundle_id);
+    bundle->bundle_id = ntohl(ctrl_msg.bundle_id);
+    bundle->count_diff = 0;
+    bundle->probe_state_diff = 0;
+    debug_msg(fs, "Opened bundle %u", bundle->bundle_id);
+}
+
+static void handle_bundle_close_request(struct fakeswitch *fs,
+        struct ofp_bundle_ctrl_msg ctrl_msg) {
+    // nothing to do, we update at commit
+}
+
+static void handle_bundle_commit_request(struct fakeswitch *fs,
+        struct ofp_bundle_ctrl_msg ctrl_msg) {
+    struct fakebundle *bundle = get_fakebundle(fs, ctrl_msg.bundle_id);
+    assert(bundle->bundle_id == ntohl(ctrl_msg.bundle_id));
+    debug_msg(fs, "Committing bundle %u. count_diff=%d probe_state_diff=%d",
+            bundle->bundle_id, bundle->count_diff, bundle->probe_state_diff);
+    // update switch counters here based on values changed during bundle_add
+    fs->count += bundle->count_diff;
+    fs->probe_state += bundle->probe_state_diff;
+}
+
+/**
+ * @param bundle_id in network byte order
+ */
+static void handle_bundle_add_message(struct fakeswitch *fs, uint32_t bundle_id,
+        struct ofp_header *msg_to_add) {
+    // save changes (counters, etc) to apply later in commit
+    struct fakebundle *bundle = get_fakebundle(fs, bundle_id);
+    assert(bundle->bundle_id == ntohl(bundle_id));
+    switch (msg_to_add->type) {
+    case OFPT_PACKET_OUT:
+    case OFPT_FLOW_MOD:
+        bundle->count_diff++;
+        bundle->probe_state_diff--;
+        break;
+    default:
+        debug_msg(fs, "Ignoring bundle_add_msg. Header: ");
+        print_header(*msg_to_add);
+    }
+}
+
 static void handle_multipart_request(struct fakeswitch *fs,
         struct ofp_multipart_request *stats_req, char * buf, int buflen) {
     uint16_t multipart_type = ntohs(stats_req->type);
     int count = 0;
-    printf("\n\n");
     debug_msg(fs, "Got multipart_req:");
     switch (multipart_type) {
     case OFPMP_PORT_DESC:
@@ -437,8 +488,6 @@ static void handle_multipart_request(struct fakeswitch *fs,
         debug_msg(fs, "Silently ignoring multipart_request msg. "
                 "Type is %d\n", multipart_type);
     }
-
-    printf("\n\n");
 
     if (count != 0) {
         assert(count >= sizeof(struct ofp_header));
@@ -469,7 +518,7 @@ static int make_config_reply(int xid, char * buf, int buflen) {
 static int make_features_reply(struct fakeswitch *fs, int id, int xid,
         char * buf, int buflen) {
     struct ofp_switch_features * features;
-    // Features reply for OF 1.0
+// Features reply for OF 1.0
     /*
      const char fake[] =     // stolen from wireshark
      {
@@ -498,8 +547,8 @@ static int make_features_reply(struct fakeswitch *fs, int id, int xid,
      0x00, 0x00, 0x00 };
      */
 
-    // taken from ovs/tests/ofp-print.at OFPT_FEATURES_REPLY - OF1.3
-    // (changed 0x04 to 0x05 - OFVersion)
+// taken from ovs/tests/ofp-print.at OFPT_FEATURES_REPLY - OF1.3
+// (changed 0x04 to 0x05 - OFVersion)
     const char fake[] = { 0x05, 0x06, 0x00, 0x20, 0x00, 0x00, 0x00, 0x01, 0x00,
             0x00, 0x50, 0x54, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00,
             0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x77, 0x00, 0x00, 0x00,
@@ -534,16 +583,16 @@ static int make_stats_desc_reply(struct ofp_multipart_request * req, char * buf,
 
     assert(buflen > reply_len);
 
-    // use request as initial template
+// use request as initial template
     memcpy(buf, req, sizeof(*req));
     reply = (struct ofp_multipart_reply *) buf;
-    // we only need to change the type and length of the header.
+// we only need to change the type and length of the header.
     reply->header.type = OFPT_MULTIPART_REPLY;
     reply->header.length = htons(reply_len);
 
     reply->type = OFPMP_DESC;
     reply->flags = 0;
-    // safe because we made sure that buflen > reply_len
+// safe because we made sure that buflen > reply_len
     memcpy(reply->body, &cbench_desc, sizeof(cbench_desc));
 
     return reply_len;
@@ -554,7 +603,7 @@ static int make_port_desc_reply(struct ofp_multipart_request * req, char * buf,
 
     printf("make_port_desc_reply\n");
 
-    // taken from wireshark - communication between ovs and floodlight
+// taken from wireshark - communication between ovs and floodlight
     const char fake[] = { 0x05, 0x13, 0x00, 0xe8, 0x00, 0x00, 0x00, 0x11, 0x00,
             0x0d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe,
             0x00, 0x48, 0x00, 0x00, 0xb6, 0x9e, 0xae, 0x15, 0xa7, 0x4c, 0x00,
@@ -582,7 +631,7 @@ static int make_port_desc_reply(struct ofp_multipart_request * req, char * buf,
     assert(buflen >= sizeof(fake));
     memcpy(buf, fake, sizeof(fake));
     reply = (struct ofp_multipart_reply *) buf;
-    // replace version and header xid
+// replace version and header xid
     reply->header.version = OFP_VERSION;
     reply->header.xid = req->header.xid;
 
@@ -594,10 +643,10 @@ static int make_table_features_reply(struct ofp_multipart_request * req,
 
     printf("make_table_features_reply\n");
 
-    // 1. build properties that will go to the properties of table_features
+// 1. build properties that will go to the properties of table_features
 
-    // Taken from first table feature property inside the first table features
-    // sent by an ovs. Trying to replicate a minimum properties scenario for table 0
+// Taken from first table feature property inside the first table features
+// sent by an ovs. Trying to replicate a minimum properties scenario for table 0
     const char fake_properties[] = {
             // Type: OFPTFPT_INSTRUCTIONS (0)
             // Length: 28
@@ -629,7 +678,7 @@ static int make_table_features_reply(struct ofp_multipart_request * req,
     };
     size_t fake_properties_size = sizeof(fake_properties);
 
-    // 2. build table_features that will go to the body of the multipart_reply
+// 2. build table_features that will go to the body of the multipart_reply
     size_t table_features_size = sizeof(struct ofp_table_features)
             + fake_properties_size;
 
@@ -647,26 +696,26 @@ static int make_table_features_reply(struct ofp_multipart_request * req,
 
     memcpy(features->properties, fake_properties, fake_properties_size);
 
-    // 3. build multipart_reply
+// 3. build multipart_reply
     struct ofp_multipart_reply * reply;
 
-    // len = struct members + body
+// len = struct members + body
     size_t reply_len = sizeof(struct ofp_multipart_reply) + table_features_size;
-
-    printf("fake_properties_size=%lu\n"
-            "sizeof(struct ofp_table_features)=%lu\n"
-            "table_features_size=%lu\n"
-            "sizeof(struct ofp_multipart_reply)=%lu\n"
-            "reply_len=%lu\n", fake_properties_size,
-            sizeof(struct ofp_table_features), table_features_size,
-            sizeof(struct ofp_multipart_reply), reply_len);
-
+    /*
+     printf("fake_properties_size=%lu\n"
+     "sizeof(struct ofp_table_features)=%lu\n"
+     "table_features_size=%lu\n"
+     "sizeof(struct ofp_multipart_reply)=%lu\n"
+     "reply_len=%lu\n", fake_properties_size,
+     sizeof(struct ofp_table_features), table_features_size,
+     sizeof(struct ofp_multipart_reply), reply_len);
+     */
     assert(buflen > reply_len);
 
-    // use request as initial template
+// use request as initial template
     memcpy(buf, req, sizeof(*req));
     reply = (struct ofp_multipart_reply *) buf;
-    // we only need to change the type and length of the header.
+// we only need to change the type and length of the header.
     reply->header.xid = req->header.xid;
     reply->header.type = OFPT_MULTIPART_REPLY;
     reply->header.length = htons(reply_len);
@@ -683,7 +732,7 @@ static int make_error_reply(struct ofp_header *request, uint16_t error_type,
     struct ofp_error_msg *error_msg;
     struct ofp_header error_header;
 
-    // fill header
+// fill header
     error_header.type = OFPT_ERROR;
     error_header.version = OFP_VERSION;
     error_header.xid = request->xid;
@@ -696,12 +745,12 @@ static int make_error_reply(struct ofp_header *request, uint16_t error_type,
 
     error_header.length = htons(total_len);
 
-    // fill error message into buf
+// fill error message into buf
     error_msg = (struct ofp_error_msg *) buf;
     error_msg->header = error_header;
     error_msg->type = OFPET_BUNDLE_FAILED;
     error_msg->code = OFPBFC_BAD_TYPE;
-    // data should have at least the first 64 bytes of the failed request
+// data should have at least the first 64 bytes of the failed request
     memcpy(error_msg->data, request, max);
 
     return total_len;
@@ -735,7 +784,7 @@ static int make_packet_in(int switch_id, int xid, int buffer_id, char * buf,
      0x07, 0xcc, 0x31, 0xc3, 0x11, 0xc7, 0xc4, 0x0c, 0x8b, 0x95, 0x51,
      0x51, 0x33, 0x54, 0x51, 0xd5, 0x00, 0x36 };*/
 
-    // OFPT_PACKET_IN (OF1.4)
+// OFPT_PACKET_IN (OF1.4)
     const char fake[] = { 0x05, 0x0a, 0x00, 0x54, 0x00, 0x00, 0x00, 0x00, 0xff,
             0xff, 0xff, 0x00, 0x00, 0x2a, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04,
             0x05, 0x06, 0x07, 0x08, 0x00, 0x01, 0x00, 0x0c, 0x80, 0x00, 0x00,
@@ -752,10 +801,10 @@ static int make_packet_in(int switch_id, int xid, int buffer_id, char * buf,
     pi->header.xid = htonl(xid);
     pi->buffer_id = htonl(buffer_id);
     eth = (struct ether_header *) &(pi->match) + 1; // TODO ??
-    // copy into src mac addr; only 4 bytes, but should suffice to not confuse
-    // the controller; don't overwrite first byte
+// copy into src mac addr; only 4 bytes, but should suffice to not confuse
+// the controller; don't overwrite first byte
     memcpy(&eth->ether_shost[1], &mac_address, sizeof(mac_address));
-    // mark this as coming from us, mostly for debug
+// mark this as coming from us, mostly for debug
     eth->ether_dhost[5] = switch_id;
     eth->ether_shost[5] = switch_id;
     return sizeof(fake);
@@ -854,12 +903,14 @@ void fakeswitch_handle_read(struct fakeswitch *fs) {
         }
         break;
     case OFPT_BUNDLE_ADD_MESSAGE:
-        debug_msg(fs, "Received Bundle Add: ");
         bundle_add = (struct ofp_bundle_add_msg*) ofph;
-        print_header(bundle_add->header);
-        printf("Bundle Id=%d Inner message header=", bundle_add->bundle_id);
-        print_header(bundle_add->message);
-        handle_bundle_add_message(bundle_add->bundle_id,
+        debug_msg(fs, "Received Bundle Add for bundle id=%d",
+                ntohl(bundle_add->bundle_id));
+        /*
+         print_header(bundle_add->header);
+         print_header(bundle_add->message);
+         */
+        handle_bundle_add_message(fs, bundle_add->bundle_id,
                 &(bundle_add->message));
         break;
     case OFPT_BUNDLE_CONTROL:
@@ -870,13 +921,16 @@ void fakeswitch_handle_read(struct fakeswitch *fs) {
         // use same struct to send reply.
         // header stills the same (length, xid, version, type)
         // change bundle_ctrl->type depending on request
-        if (ctrl_type == OFPBCT_OPEN_REQUEST)
+        if (ctrl_type == OFPBCT_OPEN_REQUEST) {
+            handle_bundle_open_request(fs, *bundle_ctrl);
             bundle_ctrl->type = htons(OFPBCT_OPEN_REPLY);
-        else if (ctrl_type == OFPBCT_CLOSE_REQUEST)
+        } else if (ctrl_type == OFPBCT_CLOSE_REQUEST) {
+            handle_bundle_close_request(fs, *bundle_ctrl);
             bundle_ctrl->type = htons(OFPBCT_CLOSE_REPLY);
-        else if (ctrl_type == OFPBCT_COMMIT_REQUEST)
+        } else if (ctrl_type == OFPBCT_COMMIT_REQUEST) {
+            handle_bundle_commit_request(fs, *bundle_ctrl);
             bundle_ctrl->type = htons(OFPBCT_COMMIT_REPLY);
-        else {
+        } else {
             // send error msg back
             debug_msg(fs, "Switch sent invalid bundle control");
             count = 0;
@@ -1067,7 +1121,7 @@ static void print_packet_in_data(char *buf, int startIndex, int dataLength) {
 static void print_bundle_ctrl(struct ofp_bundle_ctrl_msg ctrl_msg) {
     print_header(ctrl_msg.header);
     printf("Type=");
-    switch (ctrl_msg.type) {
+    switch (ntohs(ctrl_msg.type)) {
     case OFPBCT_OPEN_REQUEST:
         printf("Open Request");
         break;
@@ -1095,7 +1149,8 @@ static void print_bundle_ctrl(struct ofp_bundle_ctrl_msg ctrl_msg) {
     default:
         printf("Unknown");
     }
-    printf(" Id=%d Flags=%u\n", ctrl_msg.bundle_id, ctrl_msg.flags);
+    printf(" Id=%d Flags=%u\n", ntohl(ctrl_msg.bundle_id),
+            ntohs(ctrl_msg.flags));
 }
 
 static void print_header(struct ofp_header header) {

@@ -6,39 +6,46 @@
 #include "msgbuf.h"
 
 #define NUM_BUFFER_IDS 100000
+#define MAX_MSGS_IN_BUNDLE 100
+#define MAX_BUNDLES 100
 
-enum test_mode 
-{
+enum test_mode {
     MODE_LATENCY, MODE_THROUGHPUT
 };
 
 enum handshake_status {
-    START = 0,
-    LEARN_DSTMAC = 2,
-    READY_TO_SEND = 99,
-    WAITING = 101
+    START = 0, LEARN_DSTMAC = 2, READY_TO_SEND = 99, WAITING = 101
 };
-    
-struct fakeswitch 
-{
+
+struct fakebundle {
+    // the id of this bundle
+    uint32_t bundle_id;
+    // the number to add/subtract to fs->count when this bundle is committed
+    int count_diff;
+    // the number to add/subtract to fs->probe_state when this bundle is committed
+    int probe_state_diff;
+};
+
+struct fakeswitch {
     int id;                             // switch number
     int debug;                          // do we print debug msgs?
     int sock;
-    struct msgbuf * inbuf, * outbuf;    // input,output buffers
-    enum test_mode mode;                // are we going for latency or throughput?
-    int probe_state;                    // if mode=LATENCY, this is a flag: do we have a packet outstanding?
-                                        // if mode=THROUGHPUT, this is the number of outstanding probes
+    struct msgbuf * inbuf, *outbuf;    // input,output buffers
+    enum test_mode mode;              // are we going for latency or throughput?
+    int probe_state; // if mode=LATENCY, this is a flag: do we have a packet outstanding?
+// if mode=THROUGHPUT, this is the number of outstanding probes
     int count;                          // number of response's received
-    int switch_status;                  // are we ready to start sending packet_in's?
-    int next_status;                    // if we are waiting, next step to go after delay expires
-    int probe_size;                     // how big is the probe (for buffer tuning)
+    int switch_status;             // are we ready to start sending packet_in's?
+    int next_status;   // if we are waiting, next step to go after delay expires
+    int probe_size;                  // how big is the probe (for buffer tuning)
     int delay;                          // delay between state changes
     int xid;
-    struct timeval  delay_start;        // when did the current delay start - valid if in waiting state
+    struct timeval delay_start; // when did the current delay start - valid if in waiting state
     int total_mac_addresses;
     int current_mac_address;
     int learn_dstmac;
     int current_buffer_id;
+    struct fakebundle bundles[MAX_BUNDLES]; // bundles for this switch
 };
 
 /*** Initialize an already allocated fakeswitch
@@ -53,7 +60,9 @@ struct fakeswitch
  * @param total_mac_addresses      The total number of unique mac addresses
  *                                 to use for packet ins from this switch
  */
-void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac);
+void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize,
+        int debug, int delay, enum test_mode mode, int total_mac_addresses,
+        int learn_dstmac);
 
 /*** Set the desired flags for poll()
  * @param fs    Pointer to initalized fakeswitch
@@ -77,5 +86,12 @@ void fakeswitch_handle_io(struct fakeswitch *fs, void* pfd_events);
  * @return      Number of flow_mod responses since last call
  */
 int fakeswitch_get_count(struct fakeswitch *fs);
+
+/**
+ * Warning: this function uses ntohl(bundle_id)
+ * @param bundle_id id in network byte order
+ * @return a pointer to the fakebundle with id bundle_id for this switch
+ */
+struct fakebundle *get_fakebundle(struct fakeswitch *fs, uint32_t bundle_id);
 
 #endif

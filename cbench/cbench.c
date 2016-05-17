@@ -34,12 +34,12 @@ struct myargs my_options[] = {
     {"controller",  'c', "hostname of controller to connect to", MYARGS_STRING, {.string = "localhost"}},
     {"debug",       'd', "enable debugging", MYARGS_FLAG, {.flag = 1}},
     {"help",        'h', "print this message", MYARGS_NONE, {.none = 0}},
-    {"loops",       'l', "loops per test",   MYARGS_INTEGER, {.integer = 16}},
+    {"loops",       'l', "loops per test",   MYARGS_INTEGER, {.integer = 2}},
     {"mac-addresses", 'M', "unique source MAC addresses per switch", MYARGS_INTEGER, {.integer = 100000}},
     {"ms-per-test", 'm', "test length in ms", MYARGS_INTEGER, {.integer = 1000}},
     {"port",        'p', "controller port",  MYARGS_INTEGER, {.integer = OFP_TCP_PORT}},
     {"ranged-test", 'r', "test range of 1..$n switches", MYARGS_FLAG, {.flag = 0}},
-    {"switches",    's', "fake $n switches", MYARGS_INTEGER, {.integer = 1}}, // TODO: default is 16
+    {"switches",    's', "fake $n switches", MYARGS_INTEGER, {.integer = 2}}, // TODO: default is 16
     {"throughput",  't', "test throughput instead of latency", MYARGS_NONE, {.none = 0}},
     {"warmup",  'w', "loops to be disregarded on test start (warmup)", MYARGS_INTEGER, {.integer = 1}},
     {"cooldown",  'C', "loops to be disregarded at test end (cooldown)", MYARGS_INTEGER, {.integer = 0}},
@@ -78,7 +78,7 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
         for(i = 0; i < MAX_EVENTS; i++) {
             events[i].events = EPOLLIN | EPOLLOUT;
         }
-        
+
         int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
 
 
@@ -86,12 +86,12 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
             fakeswitch_handle_io(events[i].data.ptr, &(events[i].events));
         }
         #else
-        for(i = 0; i < n_fakeswitches; i++) 
+        for(i = 0; i < n_fakeswitches; i++)
             fakeswitch_set_pollfd(&fakeswitches[i], &pollfds[i]);
-        
+
         poll(pollfds, n_fakeswitches, 1000);
 
-        for(i = 0; i < n_fakeswitches; i++) 
+        for(i = 0; i < n_fakeswitches; i++)
             fakeswitch_handle_io(&fakeswitches[i], &pollfds[i]);
         #endif
     }
@@ -105,7 +105,7 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
         printf("%d  ", count);
         sum += count;
     }
-    passed = 1000 * diff.tv_sec + (double)diff.tv_usec/1000;   
+    passed = 1000 * diff.tv_sec + (double)diff.tv_usec/1000;
     passed -= delay;        // don't count the time we intentionally delayed
     sum /= passed;  // is now per ms
     printf(" total = %lf per ms \n", sum);
@@ -143,7 +143,7 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 			freeaddrinfo(res);
 		return -1;
 	}
-	
+
 
 
 	// set non blocking
@@ -157,7 +157,7 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 		freeaddrinfo(res);
 		return -1;
 	}
-	
+
     #ifdef USE_EPOLL
     struct epoll_event ev;
     int epollfd = epoll_create(1);
@@ -172,14 +172,14 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
     FD_SET(fd, &fds);
     #endif
 
-	if(mstimeout >= 0) 
+	if(mstimeout >= 0)
 	{
 	    tv.tv_sec = mstimeout / 1000;
 	    tv.tv_usec = (mstimeout % 1000) * 1000;
 
 	    errno = 0;
 
-	    if(connect(fd, res->ai_addr, res->ai_addrlen) < 0) 
+	    if(connect(fd, res->ai_addr, res->ai_addrlen) < 0)
 	    {
 		    if((errno != EWOULDBLOCK) && (errno != EINPROGRESS))
 		    {
@@ -198,14 +198,14 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 
     #ifdef USE_EPOLL
     close(epollfd);
-	
+
     if(ev.events & EPOLLERR) {
 	    return -1;
     } else {
 	    return 0;
 	}
     #else
-    if(ret != 1) 
+    if(ret != 1)
     {
             if(ret == 0)
                 return -1;
@@ -304,7 +304,7 @@ int main(int argc, char * argv[])
 
     const struct option * long_opts = myargs_to_long(my_options);
     char * short_opts = myargs_to_short(my_options);
-    
+
     /* parse args here */
     while(1)
     {
@@ -313,15 +313,15 @@ int main(int argc, char * argv[])
         c = getopt_long(argc, argv, short_opts, long_opts, &option_index);
         if (c == -1)
             break;
-        switch (c) 
+        switch (c)
         {
-            case 'c' :  
+            case 'c' :
                 controller_hostname = strdup(optarg);
                 break;
             case 'd':
                 debug = 1;
                 break;
-            case 'h': 
+            case 'h':
                 myargs_usage(my_options, PROG_TITLE, "help message", NULL, 1);
                 break;
             case 'L':
@@ -330,31 +330,31 @@ int main(int argc, char * argv[])
                 else
                     learn_dst_macs = 1;
                 break;
-            case 'l': 
+            case 'l':
                 tests_per_loop = atoi(optarg);
                 break;
             case 'M':
                 total_mac_addresses = atoi(optarg);
                 break;
-            case 'm': 
+            case 'm':
                 mstestlen = atoi(optarg);
                 break;
             case 'r':
                 should_test_range = 1;
                 break;
-            case 'p' : 
+            case 'p' :
                 controller_port = atoi(optarg);
                 break;
-            case 's': 
+            case 's':
                 n_fakeswitches = atoi(optarg);
                 break;
-            case 't': 
+            case 't':
                 mode = MODE_THROUGHPUT;
                 break;
-            case 'w': 
+            case 'w':
                 warmup = atoi(optarg);
                 break;
-            case 'C': 
+            case 'C':
                 cooldown = atoi(optarg);
                 break;
             case 'D':
@@ -369,7 +369,7 @@ int main(int argc, char * argv[])
             case 'o':
                 dpid_offset = atoi(optarg);
                 break;
-            default: 
+            default:
                 myargs_usage(my_options, PROG_TITLE, "help message", NULL, 1);
         }
     }
@@ -449,7 +449,7 @@ int main(int argc, char * argv[])
         if(debug)
             fprintf(stderr," :: done.\n");
         fflush(stderr);
-    
+
         #ifdef USE_EPOLL
 	    ev.events = EPOLLIN | EPOLLOUT;
 	    ev.data.fd = sock;
@@ -470,7 +470,7 @@ int main(int argc, char * argv[])
                 delay = 0;      // only delay on the first run
             v = 1000.0 * run_test(i+1, fakeswitches, mstestlen, delay);
             results[j] = v;
-			if(j<warmup || j >= tests_per_loop-cooldown) 
+			if(j<warmup || j >= tests_per_loop-cooldown)
 				continue;
             sum += v;
             if (v > max)
