@@ -64,6 +64,8 @@ void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize,
         int debug, int delay, enum test_mode mode, int total_mac_addresses,
         int learn_dstmac);
 
+void fakeswitch_destroy(struct fakeswitch *fs);
+
 /*** Set the desired flags for poll()
  * @param fs    Pointer to initalized fakeswitch
  * @param pfd   Pointer to an allocated poll structure

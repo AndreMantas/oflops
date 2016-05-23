@@ -6,8 +6,6 @@
 #include "myargs.h"
 
 static int
-count_options(struct myargs options[]);
-static int
 find_arg(struct myargs options[], char * argname);
 
 /************************************************************************/
@@ -104,7 +102,7 @@ myargs_to_short(struct myargs options[])
     return shortargs;
 }
 /************************************************************************/
-int 
+int
 count_options(struct myargs options[])
 {
     int count = 0;

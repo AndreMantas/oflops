@@ -4,29 +4,22 @@
 #include <getopt.h>
 
 enum myargs_type {
-    MYARGS_NONE,
-    MYARGS_INTEGER,
-    MYARGS_FLAG,
-    MYARGS_STRING,
-    MYAGRS_DECIMAL
+    MYARGS_NONE, MYARGS_INTEGER, MYARGS_FLAG, MYARGS_STRING, MYAGRS_DECIMAL
 };
 
 struct myargs {
-    char *  name;
-    char    shortname;
-    char *  comment;
+    char * name;
+    char shortname;
+    char * comment;
     enum myargs_type type;
-    union myarg_value
-    {
-        short   none;
-        int     integer;
-        short   flag;
-        char *  string;
-        double  decimal;
+    union myarg_value {
+        short none;
+        int integer;
+        short flag;
+        char * string;
+        double decimal;
     } default_val;
 };
-
-
 
 /** 
  *  print
@@ -45,10 +38,9 @@ struct myargs {
  *      @param  exit_val    The value to pass to exit()
  */
 
-
-void 
-myargs_usage(struct myargs options[], char * title, char * s1, char * s2, int exit_val);
-
+void
+myargs_usage(struct myargs options[], char * title, char * s1, char * s2,
+        int exit_val);
 
 /**
  * Return a list of struct options suitable for getopt_long()
@@ -56,7 +48,7 @@ myargs_usage(struct myargs options[], char * title, char * s1, char * s2, int ex
  * @return A list of long options
  */
 
-const struct option * 
+const struct option *
 myargs_to_long(struct myargs options[]);
 
 /**
@@ -67,7 +59,6 @@ myargs_to_long(struct myargs options[]);
 char *
 myargs_to_short(struct myargs options[]);
 
-
 /** 
  * Return the default value for the option
  *  abort() if does not exist or is not a string
@@ -75,7 +66,7 @@ myargs_to_short(struct myargs options[]);
  *  @param argname   The long name of an argument
  *  @return A string
  */
-char * 
+char *
 myargs_get_default_string(struct myargs options[], char * argname);
 /** 
  * Return the default value for the option
@@ -84,7 +75,7 @@ myargs_get_default_string(struct myargs options[], char * argname);
  *  @param argname   The long name of an argument
  *  @return An int
  */
-int 
+int
 myargs_get_default_integer(struct myargs options[], char * argname);
 /** 
  * Return the default value for the option
@@ -93,7 +84,7 @@ myargs_get_default_integer(struct myargs options[], char * argname);
  *  @param argname   The long name of an argument
  *  @return A zero for off, a one for on
  */
-short 
+short
 myargs_get_default_flag(struct myargs options[], char * argname);
 /** 
  * Return the default value for the option
@@ -102,8 +93,10 @@ myargs_get_default_flag(struct myargs options[], char * argname);
  *  @param argname   The long name of an argument
  *  @return A double
  */
-double 
+double
 myargs_get_default_decimal(struct myargs options[], char * argname);
 
+int
+count_options(struct myargs options[]);
 
 #endif
