@@ -6,8 +6,7 @@
 #include "msgbuf.h"
 
 #define NUM_BUFFER_IDS 100000
-#define MAX_MSGS_IN_BUNDLE 100
-#define MAX_BUNDLES 100
+#define MAX_BUNDLES 5000
 
 enum test_mode {
     MODE_LATENCY, MODE_THROUGHPUT
@@ -17,7 +16,14 @@ enum handshake_status {
     START = 0, LEARN_DSTMAC = 2, READY_TO_SEND = 99, WAITING = 101
 };
 
+enum bundle_state {
+    NOT_OPEN = 0, OPEN = 1, CLOSED = 2, COMMITTED = 3
+};
+
 struct fakebundle {
+    // current state of the bundle
+    enum bundle_state state;
+
     // the id of this bundle
     uint32_t bundle_id;
     // the number to add/subtract to fs->count when this bundle is committed
@@ -91,7 +97,7 @@ int fakeswitch_get_count(struct fakeswitch *fs);
 
 /**
  * Warning: this function uses ntohl(bundle_id)
- * @param bundle_id id in network byte order
+ * @param bundle_id id in host byte order
  * @return a pointer to the fakebundle with id bundle_id for this switch
  */
 struct fakebundle *get_fakebundle(struct fakeswitch *fs, uint32_t bundle_id);
