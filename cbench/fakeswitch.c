@@ -392,8 +392,6 @@ static void handle_bundle_commit_request(struct fakeswitch *fs,
     if (bundle->state == OPEN || bundle->state == CLOSED) {
         assert(bundle->bundle_id == h_bundle_id);
         bundle->state = COMMITTED;
-        debug_msg(fs, "Committing bundle %u. count_diff=%d probe_state_diff=%d",
-                bundle->bundle_id, bundle->count_diff, bundle->probe_state_diff);
         // update switch counters here based on values changed during bundle_add
         fs->count += bundle->count_diff;
         fs->probe_state += bundle->probe_state_diff;
@@ -776,7 +774,8 @@ void fakeswitch_change_status_now(struct fakeswitch *fs, int new_status) {
 }
 
 void fakeswitch_change_status(struct fakeswitch *fs, int new_status) {
-    if (fs->delay == 0) {
+    if (fs->delay == 0 ||
+        (fs->switch_status == LEARN_DSTMAC && new_status == READY_TO_SEND)) {
         fakeswitch_change_status_now(fs, new_status);
         debug_msg(fs, " switched to next status %d", new_status);
     } else {
@@ -836,8 +835,6 @@ void fakeswitch_handle_read(struct fakeswitch *fs) {
         break;
     case OFPT_BUNDLE_ADD_MESSAGE:
         bundle_add = (struct ofp_bundle_add_msg*) ofph;
-        debug_msg(fs, "Received Bundle Add for bundle id=%d",
-                ntohl(bundle_add->bundle_id));
         handle_bundle_add_message(fs, bundle_add->bundle_id,
                 &(bundle_add->message));
         break;
@@ -946,8 +943,6 @@ void fakeswitch_handle_read(struct fakeswitch *fs) {
         }; // end switch (ofph->type)
 
         if (fs->probe_state < 0) {
-            debug_msg(fs, "WARN: Got more responses than probes!!: : %d",
-                    fs->probe_state);
             fs->probe_state = 0;
         }
     } // end while
@@ -980,7 +975,7 @@ static void fakeswitch_handle_write(struct fakeswitch *fs) {
             fs->current_buffer_id =
                     (fs->current_buffer_id + 1) % NUM_BUFFER_IDS;
             msgbuf_push(fs->outbuf, buf, count);
-            debug_msg(fs, "send message %d", i);
+            //debug_msg(fs, "send message %d", i);
         }
     } else if (fs->switch_status == WAITING) {
         struct timeval now;
