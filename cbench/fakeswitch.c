@@ -367,11 +367,7 @@ static void handle_bundle_open_request(struct fakeswitch *fs,
     uint32_t h_bundle_id = ntohl(ctrl_msg.bundle_id);
     // bundle can be opened here or in bundle_add
     struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
-    assert(bundle->state == NOT_OPEN ||
-           bundle->state == OPEN ||
-           bundle->state == COMMITTED);
     open_bundle(bundle, h_bundle_id);
-    assert(bundle->bundle_id == h_bundle_id);
 }
 
 static void handle_bundle_close_request(struct fakeswitch *fs,
@@ -381,8 +377,9 @@ static void handle_bundle_close_request(struct fakeswitch *fs,
     struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
     if (bundle->state != OPEN) {
         debug_msg(fs, "Closing non opened bundle?");
+    } else {
+        bundle->state = CLOSED;
     }
-    bundle->state = CLOSED;
 }
 
 static void handle_bundle_commit_request(struct fakeswitch *fs,
@@ -390,11 +387,12 @@ static void handle_bundle_commit_request(struct fakeswitch *fs,
     uint32_t h_bundle_id = ntohl(ctrl_msg.bundle_id);
     struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
     if (bundle->state == OPEN || bundle->state == CLOSED) {
-        assert(bundle->bundle_id == h_bundle_id);
         bundle->state = COMMITTED;
         // update switch counters here based on values changed during bundle_add
         fs->count += bundle->count_diff;
         fs->probe_state += bundle->probe_state_diff;
+    } else {
+        debug_msg(fs, "--- Warn:committing non open or closed bundle?");
     }
 }
 
@@ -407,14 +405,10 @@ static void handle_bundle_add_message(struct fakeswitch *fs, uint32_t bundle_id,
     // save changes (counters, etc) to apply later in commit
     struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
 
-    if(bundle->state == NOT_OPEN ||
-       bundle->state == OPEN ||
-       bundle->state == COMMITTED) {
-        open_bundle(bundle, h_bundle_id);
+    // open bundle if not open already
+    open_bundle(bundle, h_bundle_id);
 
-        assert(bundle->bundle_id == h_bundle_id);
-
-        switch (msg_to_add->type) {
+    switch (msg_to_add->type) {
         case OFPT_PACKET_OUT:
         case OFPT_FLOW_MOD:
             bundle->count_diff++;
@@ -423,7 +417,6 @@ static void handle_bundle_add_message(struct fakeswitch *fs, uint32_t bundle_id,
         default:
             debug_msg(fs, "Ignoring bundle_add_msg. Header: ");
             print_header(*msg_to_add);
-        }
     }
 }
 
@@ -728,7 +721,7 @@ static int make_packet_in(int switch_id, int xid, int buffer_id, char * buf,
     uint16_t packet_in_length = sizeof(fake) + sizeof(fake_packet_in_data);
     pi->header.length = htons(packet_in_length);
     pi->header.version = OFP_VERSION;
-    pi->header.xid = htonl(xid);
+    pi->header.xid = 0; // packet in should have no xid, may mess up with other requests from controller
     pi->buffer_id = htonl(buffer_id);
     pi->total_len = htons(sizeof(fake_packet_in_data));
 
@@ -960,8 +953,8 @@ static void fakeswitch_handle_write(struct fakeswitch *fs) {
             send_count = 1;                 // just send one packet
         else if ((fs->mode == MODE_THROUGHPUT)
                 && (msgbuf_count_buffered(fs->outbuf) < throughput_buffer)) // keep buffer full
-            send_count = (throughput_buffer - msgbuf_count_buffered(fs->outbuf))
-                    / fs->probe_size;
+            send_count = ((throughput_buffer - msgbuf_count_buffered(fs->outbuf))
+                    / fs->probe_size)/2;
         for (i = 0; i < send_count; i++) {
             // queue up packet
 
@@ -975,7 +968,6 @@ static void fakeswitch_handle_write(struct fakeswitch *fs) {
             fs->current_buffer_id =
                     (fs->current_buffer_id + 1) % NUM_BUFFER_IDS;
             msgbuf_push(fs->outbuf, buf, count);
-            //debug_msg(fs, "send message %d", i);
         }
     } else if (fs->switch_status == WAITING) {
         struct timeval now;

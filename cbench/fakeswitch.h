@@ -6,7 +6,7 @@
 #include "msgbuf.h"
 
 #define NUM_BUFFER_IDS 100000
-#define MAX_BUNDLES 10000
+#define MAX_BUNDLES 100
 
 enum test_mode {
     MODE_LATENCY, MODE_THROUGHPUT
