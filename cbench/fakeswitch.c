@@ -411,6 +411,7 @@ static void handle_bundle_add_message(struct fakeswitch *fs, uint32_t bundle_id,
     switch (msg_to_add->type) {
         case OFPT_PACKET_OUT:
         case OFPT_FLOW_MOD:
+        case OFPT_PORT_MOD:
             bundle->count_diff++;
             bundle->probe_state_diff--;
             break;
