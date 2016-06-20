@@ -354,46 +354,23 @@ struct fakebundle *get_fakebundle(struct fakeswitch *fs, uint32_t bundle_id) {
 static void open_bundle(struct fakebundle *bundle, uint32_t id);
 
 static void open_bundle(struct fakebundle *bundle, uint32_t id) {
-    if (bundle->state == NOT_OPEN || bundle->state == COMMITTED) {
-        bundle->state = OPEN;
-        bundle->bundle_id = id;
-        bundle->count_diff = 0;
-        bundle->probe_state_diff = 0;
-    }
+
 }
 
 static void handle_bundle_open_request(struct fakeswitch *fs,
         struct ofp_bundle_ctrl_msg ctrl_msg) {
-    uint32_t h_bundle_id = ntohl(ctrl_msg.bundle_id);
-    // bundle can be opened here or in bundle_add
-    struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
-    open_bundle(bundle, h_bundle_id);
+
 }
 
 static void handle_bundle_close_request(struct fakeswitch *fs,
         struct ofp_bundle_ctrl_msg ctrl_msg) {
-    // nothing to do, we update at commit
-    uint32_t h_bundle_id = ntohl(ctrl_msg.bundle_id);
-    struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
-    if (bundle->state != OPEN) {
-        debug_msg(fs, "Closing non opened bundle?");
-    } else {
-        bundle->state = CLOSED;
-    }
+
 }
 
 static void handle_bundle_commit_request(struct fakeswitch *fs,
         struct ofp_bundle_ctrl_msg ctrl_msg) {
-    uint32_t h_bundle_id = ntohl(ctrl_msg.bundle_id);
-    struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
-    if (bundle->state == OPEN || bundle->state == CLOSED) {
-        bundle->state = COMMITTED;
-        // update switch counters here based on values changed during bundle_add
-        fs->count += bundle->count_diff;
-        fs->probe_state += bundle->probe_state_diff;
-    } else {
-        debug_msg(fs, "--- Warn:committing non open or closed bundle?");
-    }
+    fs->count++;
+    fs->probe_state--;
 }
 
 /**
@@ -401,24 +378,7 @@ static void handle_bundle_commit_request(struct fakeswitch *fs,
  */
 static void handle_bundle_add_message(struct fakeswitch *fs, uint32_t bundle_id,
         struct ofp_header *msg_to_add) {
-    uint32_t h_bundle_id = ntohl(bundle_id);
-    // save changes (counters, etc) to apply later in commit
-    struct fakebundle *bundle = get_fakebundle(fs, h_bundle_id);
 
-    // open bundle if not open already
-    open_bundle(bundle, h_bundle_id);
-
-    switch (msg_to_add->type) {
-        case OFPT_PACKET_OUT:
-        case OFPT_FLOW_MOD:
-        case OFPT_PORT_MOD:
-            bundle->count_diff++;
-            bundle->probe_state_diff--;
-            break;
-        default:
-            debug_msg(fs, "Ignoring bundle_add_msg. Header: ");
-            print_header(*msg_to_add);
-    }
 }
 
 static void handle_multipart_request(struct fakeswitch *fs,
