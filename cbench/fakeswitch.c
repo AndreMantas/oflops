@@ -379,6 +379,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
             struct ofp_flow_mod * fm;
             struct ofp_packet_out *po;
             struct ofp_stats_request * stats_req;
+            struct ofp_bundle_ctrl_msg *bundle_ctrl;
             case OFPT_PACKET_OUT:
                 po = (struct ofp_packet_out *) ofph;
                 if ( fs->switch_status == READY_TO_SEND && ! packet_out_is_lldp(po)) { 
@@ -465,6 +466,30 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                 } else {
                     debug_msg(fs, "Silently ignoring non-desc stats_request msg\n");
                 }
+                break;
+            case OFPT_BUNDLE_ADD_MESSAGE:
+                break;
+            case OFPT_BUNDLE_CONTROL:
+                bundle_ctrl = (struct ofp_bundle_ctrl_msg*) ofph;
+                uint16_t ctrl_type = ntohs(bundle_ctrl->type);
+                // use same struct to send reply.
+                // header stills the same (length, xid, version, type)
+                // change bundle_ctrl->type depending on request
+                if (ctrl_type == OFPBCT_OPEN_REQUEST) {
+                    bundle_ctrl->type = htons(OFPBCT_OPEN_REPLY);
+                } else if (ctrl_type == OFPBCT_CLOSE_REQUEST) {
+                    bundle_ctrl->type = htons(OFPBCT_CLOSE_REPLY);
+                } else if (ctrl_type == OFPBCT_COMMIT_REQUEST) {
+                    fs->count++;        // got response to what we went
+                    fs->probe_state--;
+                    bundle_ctrl->type = htons(OFPBCT_COMMIT_REPLY);
+                } else {
+                    debug_msg(fs, "Controller sent invalid bundle control message?");
+                    break;
+                }
+
+                msgbuf_push(fs->outbuf, (char *) bundle_ctrl,
+                        sizeof(struct ofp_bundle_ctrl_msg));
                 break;
             default: 
     //            if(fs->debug)
