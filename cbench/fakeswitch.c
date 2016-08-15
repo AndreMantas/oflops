@@ -379,6 +379,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
             struct ofp_flow_mod * fm;
             struct ofp_packet_out *po;
             struct ofp_stats_request * stats_req;
+            struct ofp_role_request *role_request;
             struct ofp_bundle_ctrl_msg *bundle_ctrl;
             case OFPT_PACKET_OUT:
                 po = (struct ofp_packet_out *) ofph;
@@ -467,10 +468,22 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                     debug_msg(fs, "Silently ignoring non-desc stats_request msg\n");
                 }
                 break;
+            case OFPT_ROLE_REQUEST:
+                debug_msg(fs, "Received role request");
+                role_request = (struct ofp_role_request*) ofph;
+                // use same role_request to send as reply
+                // only need change header type and generation id of the role
+                role_request->header.type = OFPT_ROLE_REPLY;
+                role_request->generation_id = 0xffffffffffffffff;
+                msgbuf_push(fs->outbuf, (char *) role_request,
+                        sizeof(struct ofp_role_request));
+                debug_msg(fs, "Sending role reply");
+                break;
             case OFPT_BUNDLE_ADD_MESSAGE:
                 break;
             case OFPT_BUNDLE_CONTROL:
                 bundle_ctrl = (struct ofp_bundle_ctrl_msg*) ofph;
+                bundle_ctrl->header.version= OFP_VERSION;
                 uint16_t ctrl_type = ntohs(bundle_ctrl->type);
                 // use same struct to send reply.
                 // header stills the same (length, xid, version, type)
