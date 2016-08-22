@@ -312,7 +312,8 @@ static int make_packet_in(int switch_id, int xid, int buffer_id, char * buf, int
     memcpy(buf, fake, sizeof(fake));
     pi = (struct ofp_packet_in *) buf;
     pi->header.version = OFP_VERSION;
-    pi->header.xid = htonl(xid);
+    // packet in xid should be 0 since they are not a reply to a request made by the controller
+    pi->header.xid = htonl(0);
     pi->buffer_id = htonl(buffer_id);
     eth = (struct ether_header * ) pi->data;
     // copy into src mac addr; only 4 bytes, but should suffice to not confuse
