@@ -120,7 +120,8 @@ void fakeswitch_learn_dstmac(struct fakeswitch *fs)
     pkt_in->header.version = OFP_VERSION;
     pkt_in->header.type = OFPT_PACKET_IN;
     pkt_in->header.length = htons(len);
-    pkt_in->header.xid = htonl(fs->xid++);
+    fs->xid++;
+    pkt_in->header.xid = htonl(0);
 
     pkt_in->buffer_id = -1;
     pkt_in->total_len = htons(sizeof(gratuitous_arp_reply));
