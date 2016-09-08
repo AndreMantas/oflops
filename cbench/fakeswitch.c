@@ -166,6 +166,7 @@ int fakeswitch_get_count(struct fakeswitch *fs)
     fs->count = 0;
     fs->probe_state = 0;        // reset packet state
     // keep reading until there is nothing to clear out the queue
+    debug_msg("fakeswitch_get_count()");
     while( (count = msgbuf_read(fs->inbuf,fs->sock)) > 0) {
         while(count > 0) {
             // need to read msg by msg to ensure framing isn't broken
