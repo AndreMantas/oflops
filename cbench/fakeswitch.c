@@ -504,7 +504,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
 //                } else {
 //                    debug_msg(fs, "Controller sent invalid bundle control message?");
 //                    break;
-//                }
+                }
 
                 //msgbuf_push(fs->outbuf, (char *) bundle_ctrl, sizeof(struct ofp_bundle_ctrl_msg));
                 break;
