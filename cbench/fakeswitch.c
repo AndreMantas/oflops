@@ -169,6 +169,8 @@ int fakeswitch_get_count(struct fakeswitch *fs)
     while( (count = msgbuf_read(fs->inbuf,fs->sock)) > 0) {
         debug_msg(fs, "clearing message from queue...");
         while(count > 0) {
+            int beginCount = count;
+            debug_msg(fs, "begin: count=%d",beginCount);
             // need to read msg by msg to ensure framing isn't broken
             ofph = msgbuf_peek(fs->inbuf);
             msglen = ntohs(ofph->length);
@@ -176,6 +178,11 @@ int fakeswitch_get_count(struct fakeswitch *fs)
                 break;     // msg not all there yet; 
             msgbuf_pull(fs->inbuf, NULL, ntohs(ofph->length));
             count -= msglen;
+            int endCount = count;
+            debug_msg(fs, "end: count=%d",endCount);
+            if (beginCount == endCount) {
+                debug_msg(fs, "msg length is 0? msg type=%d",ofph->type);
+            }
         }
     }
     debug_msg(fs, "ended clearing messages!");
