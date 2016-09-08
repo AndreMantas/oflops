@@ -484,7 +484,6 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                 debug_msg(fs, "Sending role reply");
                 break;
             case OFPT_BUNDLE_ADD_MESSAGE:
-                debug_msg(fs, "received bundle_add msg");
                 break;
             case OFPT_BUNDLE_CONTROL:
                 bundle_ctrl = (struct ofp_bundle_ctrl_msg*) ofph;
@@ -498,17 +497,18 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                 } else if (ctrl_type == OFPBCT_CLOSE_REQUEST) {
                     bundle_ctrl->type = htons(OFPBCT_CLOSE_REPLY);
                 } else if (ctrl_type == OFPBCT_COMMIT_REQUEST) {
-                    debug_msg(fs, "received commit_request, changing counters");
-                    fs->count++;        // got response to what we went
-                    fs->probe_state--;
+                    if(fs->switch_status == READY_TO_SEND) {
+                        fs->count++;        // got response to what we went
+                        fs->probe_state--;
+                    }
                     bundle_ctrl->type = htons(OFPBCT_COMMIT_REPLY);
                 } else {
                     debug_msg(fs, "Controller sent invalid bundle control message?");
                     break;
                 }
 
-                msgbuf_push(fs->outbuf, (char *) bundle_ctrl,
-                        sizeof(struct ofp_bundle_ctrl_msg));
+                //msgbuf_push(fs->outbuf, (char *) bundle_ctrl,
+                //        sizeof(struct ofp_bundle_ctrl_msg));
                 break;
             default: 
     //            if(fs->debug)
