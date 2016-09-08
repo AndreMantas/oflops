@@ -166,8 +166,8 @@ int fakeswitch_get_count(struct fakeswitch *fs)
     fs->count = 0;
     fs->probe_state = 0;        // reset packet state
     // keep reading until there is nothing to clear out the queue
-    debug_msg(fs, "fakeswitch_get_count()");
     while( (count = msgbuf_read(fs->inbuf,fs->sock)) > 0) {
+        debug_msg(fs, "clearing message from queue...");
         while(count > 0) {
             // need to read msg by msg to ensure framing isn't broken
             ofph = msgbuf_peek(fs->inbuf);
@@ -178,6 +178,7 @@ int fakeswitch_get_count(struct fakeswitch *fs)
             count -= msglen;
         }
     }
+    debug_msg(fs, "ended clearing messages!");
     return ret;
 }
 
