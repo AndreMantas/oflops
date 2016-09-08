@@ -389,6 +389,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                     // assume this is in response to what we sent
                     fs->count++;        // got response to what we went
                     fs->probe_state--;
+                    debug_msg(fs, "received a packet out directly?");
                 }
                 break;
             case OFPT_FLOW_MOD:
@@ -399,6 +400,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                     fs->count++;        // got response to what we went
                     fs->probe_state--;
                 }
+                debug_msg(fs, "received a flow mod directly?");
                 break;
             case OFPT_FEATURES_REQUEST:
                 // pull msgs out of buffer
@@ -482,6 +484,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                 debug_msg(fs, "Sending role reply");
                 break;
             case OFPT_BUNDLE_ADD_MESSAGE:
+                debug_msg(fs, "received bundle_add msg");
                 break;
             case OFPT_BUNDLE_CONTROL:
                 bundle_ctrl = (struct ofp_bundle_ctrl_msg*) ofph;
@@ -495,6 +498,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                 } else if (ctrl_type == OFPBCT_CLOSE_REQUEST) {
                     bundle_ctrl->type = htons(OFPBCT_CLOSE_REPLY);
                 } else if (ctrl_type == OFPBCT_COMMIT_REQUEST) {
+                    debug_msg(fs, "received commit_request, changing counters");
                     fs->count++;        // got response to what we went
                     fs->probe_state--;
                     bundle_ctrl->type = htons(OFPBCT_COMMIT_REPLY);
