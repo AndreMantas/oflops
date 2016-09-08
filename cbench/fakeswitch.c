@@ -534,9 +534,13 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
     {
         if ((fs->mode == MODE_LATENCY)  && ( fs->probe_state == 0 ))      
             send_count = 1;                 // just send one packet
-        else if ((fs->mode == MODE_THROUGHPUT) && 
-                (msgbuf_count_buffered(fs->outbuf) < throughput_buffer))  // keep buffer full
-            send_count = (throughput_buffer - msgbuf_count_buffered(fs->outbuf)) / fs->probe_size;
+        else if (fs->mode == MODE_THROUGHPUT) {
+            int already_buffered = msgbuf_count_buffered(fs->outbuf);
+            if (already_buffered < throughput_buffer) {  // keep buffer full
+                send_count = ((throughput_buffer - already_buffered) / fs->probe_size);
+                debug_msg(fs, "Will send %d messages", send_count);
+            }
+        }
         for (i = 0; i < send_count; i++)
         {
             // queue up packet
@@ -547,7 +551,10 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
             fs->current_mac_address = ( fs->current_mac_address + 1 ) % fs->total_mac_addresses;
             fs->current_buffer_id =  ( fs->current_buffer_id + 1 ) % NUM_BUFFER_IDS;
             msgbuf_push(fs->outbuf, buf, count);
-            debug_msg(fs, "send message %d", i);
+            //debug_msg(fs, "send message %d", i);
+        }
+        if (send_count != 0) {
+            debug_msg(fs, "Done sending %d messages", send_count);
         }
     } else if( fs->switch_status == WAITING) 
     {
