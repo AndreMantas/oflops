@@ -389,7 +389,6 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                     // assume this is in response to what we sent
                     fs->count++;        // got response to what we went
                     fs->probe_state--;
-                    debug_msg(fs, "received a packet out directly?");
                 }
                 break;
             case OFPT_FLOW_MOD:
@@ -400,7 +399,6 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                     fs->count++;        // got response to what we went
                     fs->probe_state--;
                 }
-                debug_msg(fs, "received a flow mod directly?");
                 break;
             case OFPT_FEATURES_REQUEST:
                 // pull msgs out of buffer
@@ -488,29 +486,27 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
             case OFPT_BUNDLE_CONTROL:
                 bundle_ctrl = (struct ofp_bundle_ctrl_msg*) ofph;
                 uint16_t ctrl_type = ntohs(bundle_ctrl->type);
-                /*
-                bundle_ctrl->header.version= OFP_VERSION;
+
+//                bundle_ctrl->header.version= OFP_VERSION;
 
                 // use same struct to send reply.
                 // header stills the same (length, xid, version, type)
                 // change bundle_ctrl->type depending on request
-                if (ctrl_type == OFPBCT_OPEN_REQUEST) {
-                    bundle_ctrl->type = htons(OFPBCT_OPEN_REPLY);
-                } else if (ctrl_type == OFPBCT_CLOSE_REQUEST) {
-                    bundle_ctrl->type = htons(OFPBCT_CLOSE_REPLY);
-                } else*/
+//                if (ctrl_type == OFPBCT_OPEN_REQUEST) {
+//                    bundle_ctrl->type = htons(OFPBCT_OPEN_REPLY);
+//                } else if (ctrl_type == OFPBCT_CLOSE_REQUEST) {
+//                    bundle_ctrl->type = htons(OFPBCT_CLOSE_REPLY);
+//                } else
                 if (ctrl_type == OFPBCT_COMMIT_REQUEST && fs->switch_status == READY_TO_SEND) {
                     fs->count++;        // got response to what we went
                     fs->probe_state--;
-                }
-                    //bundle_ctrl->type = htons(OFPBCT_COMMIT_REPLY);
-                /*} else {
-                    debug_msg(fs, "Controller sent invalid bundle control message?");
-                    break;
-                }*/
+//                    bundle_ctrl->type = htons(OFPBCT_COMMIT_REPLY);
+//                } else {
+//                    debug_msg(fs, "Controller sent invalid bundle control message?");
+//                    break;
+//                }
 
-                //msgbuf_push(fs->outbuf, (char *) bundle_ctrl,
-                //        sizeof(struct ofp_bundle_ctrl_msg));
+                //msgbuf_push(fs->outbuf, (char *) bundle_ctrl, sizeof(struct ofp_bundle_ctrl_msg));
                 break;
             default: 
     //            if(fs->debug)
@@ -540,7 +536,6 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
             int already_buffered = msgbuf_count_buffered(fs->outbuf);
             if (already_buffered < throughput_buffer) {  // keep buffer full
                 send_count = ((throughput_buffer - already_buffered) / fs->probe_size);
-                debug_msg(fs, "Will send %d messages", send_count);
             }
         }
         for (i = 0; i < send_count; i++)
@@ -554,9 +549,6 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
             fs->current_buffer_id =  ( fs->current_buffer_id + 1 ) % NUM_BUFFER_IDS;
             msgbuf_push(fs->outbuf, buf, count);
             //debug_msg(fs, "send message %d", i);
-        }
-        if (send_count != 0) {
-            debug_msg(fs, "Done sending %d messages", send_count);
         }
     } else if( fs->switch_status == WAITING) 
     {
